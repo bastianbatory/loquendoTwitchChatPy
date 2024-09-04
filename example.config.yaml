@@ -1,0 +1,12 @@
+# config.yaml
+TWITCH_OAUTH_TOKEN: TWITCH_OAUTH_TOKEN
+TWITCH_CHANNEL: TWITCH_CHANNEL
+IGNORED_USERS:
+  - streamelements
+  - wizebot
+  - serybot
+IGNORED_MESSAGES_STARTS_WITH:
+  - http://
+  - https://
+COMMAND: '!voz'
+HELP_MESSAGE: '/me Para cambiar tu voz utiliza !voz [voz], voces disponibles: Carlos, Jorge, Diego, Javier, PaulinaMl, Angelica, Isabela, Francisca, Soledad. Por ejemplo: !voz Carlos'
