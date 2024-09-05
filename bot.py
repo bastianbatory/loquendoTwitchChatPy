@@ -7,6 +7,7 @@ import random
 import threading
 from twitchio.ext import commands
 from twitchio import Channel
+from twitchio import errors
 from loquendo import Loquendo
 from pydub import AudioSegment
 import pyaudio
@@ -25,8 +26,8 @@ voice_command = config['COMMAND']
 help_message = config['HELP_MESSAGE']
 ignored_messages = config['IGNORED_MESSAGES_STARTS_WITH']
 
-
 logger = None
+#window = None
 
 class Logger:
     def __init__(self, log_widget):
@@ -41,11 +42,15 @@ def initialize_logger(log_widget):
     logger = Logger(log_widget)
 
 class Bot(commands.Bot):
-    def __init__(self, loquendo, logger, volume_scale, output_device_var):
+    def __init__(self, loquendo, logger, volume_scale, output_device_var, window, red_label, yellow_label, green_label):
         self.loquendo = loquendo
         self.logger = logger
         self.volume_scale = volume_scale
         self.output_device_var = output_device_var
+        self.window = window
+        self.red_label = red_label
+        self.yellow_label = yellow_label
+        self.green_label = green_label
         super().__init__(token=token, prefix='!', initial_channels=[channel])
         self.voice_mapping = self.load_voice_mapping()
         self.available_voices = ["Carlos", "Jorge", "Diego", "Javier", "Paulina-Ml", "Angelica", "Isabela", "Francisca", "Soledad"]
@@ -83,6 +88,9 @@ class Bot(commands.Bot):
     async def event_channel_joined(self, channel: Channel) -> None:
         if channel and hasattr(channel, 'name'):
             self.log(f'✔ [3/3] Conectado al canal de Twitch "{channel.name}" con el bot "{self.nick}"')
+
+                # Forzar actualización de la ventana para que se muestre la imagen
+            self.window.update()
             self.log(f'------------------------------------------------')
             self.log(f'✔✔✔ Todo listo, escuchando mensajes ✔✔✔')
             self.log(f'------------------------------------------------')
@@ -95,7 +103,6 @@ class Bot(commands.Bot):
         os._exit(1)
 
     async def event_message(self, message):
-
         def clean_message(msg):
             cleaned_msg = re.sub(r'\s+', ' ', msg).strip()
             return cleaned_msg
@@ -112,6 +119,7 @@ class Bot(commands.Bot):
                     await self.process_message(message)
 
     async def process_message(self, message):
+
         texto = f"{message.author.name} dize: {message.content}"
         self.log(f"-----------------------------")
         self.log(f"Texto generado: {texto}")
@@ -202,16 +210,16 @@ class Bot(commands.Bot):
             return
         
         if voz in self.available_voices:
-            self.log(f"{voz}")
-            self.log(f"{self.available_voices}")
             self.voice_mapping[message.author.name] = voz
             self.save_voice_mapping()
             await message.channel.send(f"Voz cambiada a {voz} para {message.author.name}")
             self.log(f"Voz cambiada a {voz} para {message.author.name}")
+            self.log(f"-----------------------------")
             print(f"Voz cambiada a {voz} para {message.author.name}")
         else:
             await message.channel.send(f"La voz {voz} no existe o {message.author.name} ya la tiene")
             self.log(f"❌ La voz {voz} no existe o ya la tiene")
+            self.log(f"-----------------------------")
             print(f"La voz {voz} no existe o ya la tiene")
 
     def is_command_or_link(self, content):
@@ -253,22 +261,42 @@ def save_selected_device(device_name, bot_instance=None):
         json.dump({"selected_device": device_name}, f)
 
 
-async def run_bot(loquendo, logger, volume_scale, output_device_var):
+async def run_bot(loquendo, logger, volume_scale, output_device_var, window, red_label, yellow_label, green_label):
     global bot_instance
-    bot_instance = Bot(loquendo, logger, volume_scale, output_device_var)
-    await bot_instance.start()
+    bot_instance = Bot(loquendo, logger, volume_scale, output_device_var, window, red_label, yellow_label, green_label)
+    try:
+        await bot_instance.start()
+    except errors.AuthenticationError:
+        logger.log(f"❌ Token de Twitch incorrecto")
 
+def load_selected_device(window):
+    # Comprueba que el logger esté inicializado antes de usarlo
+    if logger:
+        logger.log(f"⏳ [0/3] Dispositivo de salida: Cargando...")
+    else:
+        print("Logger no inicializado.")
 
-def load_selected_device(bot_instance=None):
-    logger.log(f"⏳ [0/3] Dispositivo de salida: Cargando...")
     if os.path.exists('selected_device.json'):
         with open('selected_device.json', 'r') as f:
             data = json.load(f)
             device_name = data.get("selected_device")
-            logger.log(f"✔ [1/3] Dispositivo de salida: OK -> {device_name}")
+            
+            if logger:
+                logger.log(f"✔ [1/3] Dispositivo de salida: OK -> {device_name}")
             print(f"Dispositivo de salida cargado: {device_name}")
+
+#                yellow_label.pack(side=tk.LEFT, padx=5)  # Posicionar el círculo a la derecha con un pequeño espacio
+
+
             return device_name
     return None
+
+#def img():
+#    a = tk.PhotoImage(window, file='./assets/yellow_circle.png' )
+#    a.pack()
+
+import tkinter as tk
+from tkinter import ttk, scrolledtext
 
 def start_tkinter_and_bot():
     def on_closing():
@@ -278,45 +306,87 @@ def start_tkinter_and_bot():
 
     window = tk.Tk()
     window.title("Bot de Twitch")
+    window.geometry("700x500")  # Ajusta el tamaño de la ventana
 
-    log_widget = scrolledtext.ScrolledText(window, wrap=tk.WORD, width=50, height=20)
-    log_widget.pack()
+    # Marco principal
+    main_frame = tk.Frame(window)
+    main_frame.pack(fill='both', expand=True)
 
-    volume_label = tk.Label(window, text="Volumen:")
-    volume_label.pack()
+    # Menú desplegable de dispositivo de salida en la parte superior
+    output_device_label = tk.Label(main_frame, text="Dispositivo de salida:")
+    output_device_label.place(x=10, y=10)  # Posicionar con 'place'
 
-    volume_scale = tk.Scale(window, from_=0, to=100, orient=tk.HORIZONTAL)
-    volume_scale.set(50)
-    volume_scale.pack()
-
-    output_device_label = tk.Label(window, text="Dispositivo de salida:")
-    output_device_label.pack()
-
-    initialize_logger(log_widget)  # Inicializa el logger antes de cargar el dispositivo
+    output_device_var = tk.StringVar(window)
 
     output_devices = list_audio_output_devices()
-    output_device_var = tk.StringVar(window)
-    selected_device = load_selected_device()  # Ahora debería funcionar sin problemas
+    selected_device = load_selected_device(window)
 
     if selected_device:
         output_device_var.set(selected_device)
 
-    output_device_menu = ttk.Combobox(window, textvariable=output_device_var, values=output_devices)
-    output_device_menu.pack()
-
-    loquendo = Loquendo(log_callback=logger.log)
-
-    global bot_instance
-    bot_instance = Bot(loquendo, logger, volume_scale, output_device_var)
+    output_device_menu = ttk.Combobox(main_frame, textvariable=output_device_var, values=output_devices)
+    output_device_menu.place(x=150, y=10, width=200)  # Posicionar con 'place'
     
     output_device_menu.bind("<<ComboboxSelected>>", lambda event: bot_instance.on_device_selected(output_device_var.get()))
 
-    logger.log(f'⏳ [2/3] Canal de Twitch: Conectando...')
-    bot_thread = threading.Thread(target=lambda: asyncio.run(run_bot(loquendo, logger, volume_scale, output_device_var)))
-    bot_thread.start()
+    # Widget de texto para log
+    log_widget = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD)
+    log_widget.place(x=10, y=50, width=480, height=350)  # Posicionar con 'place'
 
-    window.protocol("WM_DELETE_WINDOW", on_closing)
-    window.mainloop()
+    # Barra de volumen a la derecha
+    volume_label = tk.Label(main_frame, text="Volumen:")
+    volume_label.place(x=520, y=50)  # Posicionar con 'place'
+
+    volume_scale = tk.Scale(main_frame, from_=0, to=100, orient=tk.VERTICAL)
+    volume_scale.set(50)
+    volume_scale.place(x=520, y=80, height=320)  # Posicionar con 'place'
+
+    # Marco para las luces de estado (Movido a la izquierda debajo del log_widget)
+    status_frame = tk.Frame(main_frame)
+    status_frame.place(x=10, y=410)  # Marco debajo del log_widget
+
+    # Etiquetas y círculos de conexión a servidor de voces (verde)
+    green_circle = tk.PhotoImage(file='./assets/green_circle.png').subsample(10, 10)
+    green_label = tk.Label(status_frame, image=green_circle)
+    green_label.grid(row=0, column=0, padx=5, pady=2)  # Usar 'grid' dentro del marco
+
+    twitch_bot_label = tk.Label(status_frame, text="Conexion a servidor de voces")
+    twitch_bot_label.grid(row=0, column=1, sticky='w')  # Etiqueta a la derecha del círculo verde
+
+    # Círculo amarillo y etiqueta de conexión a Twitch [Bot]
+    yellow_circle = tk.PhotoImage(file='./assets/yellow_circle.png').subsample(10, 10)
+    yellow_label = tk.Label(status_frame, image=yellow_circle)
+    yellow_label.grid(row=1, column=0, padx=5, pady=2)  # Círculo amarillo
+
+    twitch_bot_label = tk.Label(status_frame, text="Conexion a Twitch [Bot]")
+    twitch_bot_label.grid(row=1, column=1, sticky='w')
+
+    # Círculo rojo y etiqueta de conexión a Twitch [Canal]
+    red_circle = tk.PhotoImage(file='./assets/red_circle.png').subsample(10, 10)
+    red_label = tk.Label(status_frame, image=red_circle)
+    red_label.grid(row=2, column=0, padx=5, pady=2)  # Círculo rojo
+
+    twitch_channel_label = tk.Label(status_frame, text="Conexion a Twitch [Canal]")
+    twitch_channel_label.grid(row=2, column=1, sticky='w')
+
+    # Inicialización del logger y resto del código funcional
+    initialize_logger(log_widget)  # Inicializa el logger antes de cargar el dispositivo
+
+    loquendo = Loquendo(log_callback=logger.log)
+    global bot_instance
+    bot_instance = Bot(loquendo, logger, volume_scale, output_device_var, window, None, None, None)
+
+    logger.log(f'⏳ [2/3] Canal de Twitch: Conectando...')
+
+    try:
+        bot_thread = threading.Thread(target=lambda: asyncio.run(run_bot(loquendo, logger, volume_scale, output_device_var, window, None, None, None)))
+        bot_thread.start()
+
+        window.protocol("WM_DELETE_WINDOW", on_closing)
+        window.mainloop()
+
+    except Exception as e:
+        print(e)
 
 
 if __name__ == "__main__":
