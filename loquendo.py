@@ -7,7 +7,6 @@ from datetime import datetime
 import threading
 import sys
 
-ok_voice = "fsef"
 
 class Loquendo:
     def __init__(self, log_callback=None):
@@ -40,6 +39,9 @@ class Loquendo:
             try:
                 if self.first1:
                     self._log("⏳ [1/3] Servidor de voces: Autenticando...")
+    #                self.bot.start_circle("red", 0)
+    #                self.bot.stop_circle("yellow", 0)
+    #                self.bot.stop_circle("green", 0)
                     self.first1 = False
                 else:
                     print("Solicitando token TTS...")
@@ -77,6 +79,10 @@ class Loquendo:
                     print("1")
                 self._get_token()
                 if self.first:
+        #            self.bot_instance.start_circle("green", 0)
+        #           self.bot_instance.stop_circle("red", 0)
+        #            self.bot_instance.stop_circle("yellow", 0)
+       #             bot_instance.blink_yellow_circle([0, 1, 2])
                     self._log("✔ [2/3] Servidor de voces: Conectado")
                     ok_voice = True
                     self.first = False
@@ -147,3 +153,4 @@ class Loquendo:
 
 
         return s
+    

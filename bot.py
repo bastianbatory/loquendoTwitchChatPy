@@ -42,15 +42,19 @@ def initialize_logger(log_widget):
     logger = Logger(log_widget)
 
 class Bot(commands.Bot):
-    def __init__(self, loquendo, logger, volume_scale, output_device_var, window, red_label, yellow_label, green_label):
+    def __init__(self, loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame):
         self.loquendo = loquendo
         self.logger = logger
         self.volume_scale = volume_scale
         self.output_device_var = output_device_var
         self.window = window
-        self.red_label = red_label
-        self.yellow_label = yellow_label
-        self.green_label = green_label
+        self.circle_images = circle_images
+        self.circle_labels = circle_labels
+        self.circle_frame = circle_frame
+        self.blinking = False
+        self.no_circle_image = self.load_circle_image("no")
+        self.blink_delay = 500  # Retraso en milisegundos para el parpadeo
+        self.blink_rows = []
         super().__init__(token=token, prefix='!', initial_channels=[channel])
         self.voice_mapping = self.load_voice_mapping()
         self.available_voices = ["Carlos", "Jorge", "Diego", "Javier", "Paulina-Ml", "Angelica", "Isabela", "Francisca", "Soledad"]
@@ -76,9 +80,65 @@ class Bot(commands.Bot):
         self.log(f"Dispositivo de salida cambiado a {device_name}")
         print(f"Dispositivo de salida cambiado a {device_name}")
 
+    
+    def start_circle(self, color, row):
+        """Enciende el círculo del color dado en la fila especificada."""
+        if self.circle_images[color][row] is None:
+            self.circle_images[color][row] = self.load_circle_image(color)
+        
+        self.circle_labels[color][row] = tk.Label(self.circle_frame, image=self.circle_images[color][row])
+        self.circle_labels[color][row].grid(row=row, column=0, padx=5, pady=2)
+
+    def stop_circle(self, color, row):
+        """Apaga el círculo del color dado en la fila especificada."""
+        if self.circle_labels[color][row] is not None:
+            self.circle_labels[color][row].grid_forget()
+            self.circle_labels[color][row] = None
+
+    def load_circle_image(self, image_name):
+        """Cargar la imagen del círculo según el nombre de archivo."""
+        try:
+            return tk.PhotoImage(file=f'./assets/{image_name}_circle.png').subsample(10, 10)
+        except Exception as e:
+            print(f"Error al cargar la imagen {image_name}.png: {e}")
+            return None
+
+    def blink_yellow_circle(self, rows):
+        """Hace que los círculos amarillos parpadeen alternando entre el círculo y no_circle."""
+        if not self.blinking:
+            self.blinking = True
+            self.blink_rows = rows
+            self._blink_all_circles()
+        else:
+            self.blinking = False
+            self._reset_circles()
+
+    def _blink_all_circles(self):
+        """Parpadea todos los círculos amarillos sincronizadamente."""
+        if self.blinking:
+            for row in self.blink_rows:
+                label = self.circle_labels["yellow"][row]
+                if label:
+                    if label.cget("image") == str(self.circle_images["yellow"][row]):
+                        label.config(image=self.no_circle_image)
+                    else:
+                        label.config(image=self.circle_images["yellow"][row])
+            # Vuelve a llamar a _blink_all_circles después del retraso
+            self.window.after(self.blink_delay, self._blink_all_circles)
+
+    def _reset_circles(self):
+        """Restablece la imagen de todos los círculos amarillos."""
+        for row in self.blink_rows:
+            label = self.circle_labels["yellow"][row]
+            if label:
+                label.config(image=self.circle_images["yellow"][row])
+
     async def event_ready(self):
         #self.log(f'Bot {self.nick} conectado ')
-        print(f'Login en Twitch | {self.nick}')
+        bot_instance.start_circle("green", 1)
+        bot_instance.stop_circle("yellow", 1)
+        bot_instance.stop_circle("red", 1)
+        print(f'Login Bot en Twitch | {self.nick}')
         channel_obj = self.get_channel(channel)
         if channel_obj:
             print(f"Canal obtenido: {channel_obj.name}")
@@ -86,6 +146,9 @@ class Bot(commands.Bot):
             print("No se pudo obtener el canal.")
 
     async def event_channel_joined(self, channel: Channel) -> None:
+        bot_instance.start_circle("green", 2)
+        bot_instance.stop_circle("yellow", 2)
+        bot_instance.stop_circle("red", 2)
         if channel and hasattr(channel, 'name'):
             self.log(f'✔ [3/3] Conectado al canal de Twitch "{channel.name}" con el bot "{self.nick}"')
 
@@ -98,6 +161,9 @@ class Bot(commands.Bot):
             self.log("❌ Error: El objeto canal no tiene un atributo 'name'")
 
     async def event_channel_join_failure(self, channel):
+        self.stop_circle("green", 2)
+        self.stop_circle("yellow", 2)
+        self.start_circle("red", 2)
         self.log(f"❌ Error al conectar con el canal {channel}, canal no existe o hubo un error, revisa el archivo config.yaml")
         await asyncio.sleep(10)
         os._exit(1)
@@ -261,13 +327,19 @@ def save_selected_device(device_name, bot_instance=None):
         json.dump({"selected_device": device_name}, f)
 
 
-async def run_bot(loquendo, logger, volume_scale, output_device_var, window, red_label, yellow_label, green_label):
+async def run_bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame):
     global bot_instance
-    bot_instance = Bot(loquendo, logger, volume_scale, output_device_var, window, red_label, yellow_label, green_label)
+    bot_instance = Bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame)
     try:
         await bot_instance.start()
     except errors.AuthenticationError:
+        bot_instance.start_circle("red", 1)
+        bot_instance.stop_circle("yellow", 1)
+        bot_instance.stop_circle("green", 1)
         logger.log(f"❌ Token de Twitch incorrecto")
+        await asyncio.sleep(10)
+        os._exit(1)
+
 
 def load_selected_device(window):
     # Comprueba que el logger esté inicializado antes de usarlo
@@ -295,92 +367,96 @@ def load_selected_device(window):
 #    a = tk.PhotoImage(window, file='./assets/yellow_circle.png' )
 #    a.pack()
 
-import tkinter as tk
-from tkinter import ttk, scrolledtext
-
 def start_tkinter_and_bot():
+    global yellow_circle_image0
+    global yellow_circle_image1
+    global yellow_circle_image2
+    state = "OFF"
+    width = 0
+    height = 0
+
     def on_closing():
         if bot_instance:
             bot_instance.loop.run_until_complete(bot_instance.close())
         window.destroy()
 
+    circle_images = {
+        "yellow": [None, None, None],
+        "red": [None, None, None],
+        "green": [None, None, None]
+    }
+    
+    circle_labels = {
+        "yellow": [None, None, None],
+        "red": [None, None, None],
+        "green": [None, None, None]
+    }
+
     window = tk.Tk()
     window.title("Bot de Twitch")
-    window.geometry("700x500")  # Ajusta el tamaño de la ventana
+    window.geometry("700x500")
 
-    # Marco principal
-    main_frame = tk.Frame(window)
+    main_frame = tk.Frame(window, background="cyan")
     main_frame.pack(fill='both', expand=True)
 
-    # Menú desplegable de dispositivo de salida en la parte superior
-    output_device_label = tk.Label(main_frame, text="Dispositivo de salida:")
-    output_device_label.place(x=10, y=10)  # Posicionar con 'place'
+    # Crear un nuevo Frame para manejar los círculos con grid()
+    circle_frame = tk.Frame(main_frame)
+    circle_frame.pack(side='bottom', pady=10)  # Usamos pack para el frame completo
+
+    output_device_label = tk.Label(main_frame, text="Dispositivo de salida:", background="blue")
+    output_device_label.place(x=10, y=10)
 
     output_device_var = tk.StringVar(window)
-
     output_devices = list_audio_output_devices()
     selected_device = load_selected_device(window)
 
     if selected_device:
         output_device_var.set(selected_device)
 
-    output_device_menu = ttk.Combobox(main_frame, textvariable=output_device_var, values=output_devices)
-    output_device_menu.place(x=150, y=10, width=200)  # Posicionar con 'place'
-    
+    output_device_menu = ttk.Combobox(main_frame, textvariable=output_device_var, values=output_devices, background="red")
+    output_device_menu.place(x=150, y=10, width=200)
+
     output_device_menu.bind("<<ComboboxSelected>>", lambda event: bot_instance.on_device_selected(output_device_var.get()))
 
-    # Widget de texto para log
-    log_widget = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD)
-    log_widget.place(x=10, y=50, width=480, height=350)  # Posicionar con 'place'
+    log_widget = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, background="green")
+    log_widget.place(x=10, y=50, width=480, height=350)
 
-    # Barra de volumen a la derecha
-    volume_label = tk.Label(main_frame, text="Volumen:")
-    volume_label.place(x=520, y=50)  # Posicionar con 'place'
+    volume_label = tk.Label(main_frame, text="Volumen:", background="yellow")
+    volume_label.place(x=520, y=50)
 
-    volume_scale = tk.Scale(main_frame, from_=0, to=100, orient=tk.VERTICAL)
+    volume_scale = tk.Scale(main_frame, from_=0, to=100, orient=tk.VERTICAL, background="yellow")
     volume_scale.set(50)
-    volume_scale.place(x=520, y=80, height=320)  # Posicionar con 'place'
+    volume_scale.place(x=520, y=80, height=320)
 
-    # Marco para las luces de estado (Movido a la izquierda debajo del log_widget)
-    status_frame = tk.Frame(main_frame)
-    status_frame.place(x=10, y=410)  # Marco debajo del log_widget
+    # Usa el frame circle_frame para los círculos con grid()
+    twitch_bot_label = tk.Label(circle_frame, text="Conexion a servidor de voces")
+    twitch_bot_label.grid(row=0, column=1, sticky='w')
 
-    # Etiquetas y círculos de conexión a servidor de voces (verde)
-    green_circle = tk.PhotoImage(file='./assets/green_circle.png').subsample(10, 10)
-    green_label = tk.Label(status_frame, image=green_circle)
-    green_label.grid(row=0, column=0, padx=5, pady=2)  # Usar 'grid' dentro del marco
-
-    twitch_bot_label = tk.Label(status_frame, text="Conexion a servidor de voces")
-    twitch_bot_label.grid(row=0, column=1, sticky='w')  # Etiqueta a la derecha del círculo verde
-
-    # Círculo amarillo y etiqueta de conexión a Twitch [Bot]
-    yellow_circle = tk.PhotoImage(file='./assets/yellow_circle.png').subsample(10, 10)
-    yellow_label = tk.Label(status_frame, image=yellow_circle)
-    yellow_label.grid(row=1, column=0, padx=5, pady=2)  # Círculo amarillo
-
-    twitch_bot_label = tk.Label(status_frame, text="Conexion a Twitch [Bot]")
+    twitch_bot_label = tk.Label(circle_frame, text="Conexion a Twitch [Bot]")
     twitch_bot_label.grid(row=1, column=1, sticky='w')
 
-    # Círculo rojo y etiqueta de conexión a Twitch [Canal]
-    red_circle = tk.PhotoImage(file='./assets/red_circle.png').subsample(10, 10)
-    red_label = tk.Label(status_frame, image=red_circle)
-    red_label.grid(row=2, column=0, padx=5, pady=2)  # Círculo rojo
-
-    twitch_channel_label = tk.Label(status_frame, text="Conexion a Twitch [Canal]")
+    twitch_channel_label = tk.Label(circle_frame, text="Conexion a Twitch [Canal]")
     twitch_channel_label.grid(row=2, column=1, sticky='w')
 
-    # Inicialización del logger y resto del código funcional
-    initialize_logger(log_widget)  # Inicializa el logger antes de cargar el dispositivo
+    initialize_logger(log_widget)
 
     loquendo = Loquendo(log_callback=logger.log)
     global bot_instance
-    bot_instance = Bot(loquendo, logger, volume_scale, output_device_var, window, None, None, None)
+    bot_instance = Bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame)
 
+    # Utilizamos grid() en el frame circle_frame para evitar conflictos
+    bot_instance.start_circle("yellow", 0)
+    bot_instance.start_circle("yellow", 1)
+    bot_instance.start_circle("yellow", 2)
+    bot_instance.blink_yellow_circle([0, 1, 2])
+
+    
     logger.log(f'⏳ [2/3] Canal de Twitch: Conectando...')
 
     try:
-        bot_thread = threading.Thread(target=lambda: asyncio.run(run_bot(loquendo, logger, volume_scale, output_device_var, window, None, None, None)))
+        bot_thread = threading.Thread(target=lambda: asyncio.run(run_bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame)))
         bot_thread.start()
+
 
         window.protocol("WM_DELETE_WINDOW", on_closing)
         window.mainloop()
