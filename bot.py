@@ -27,6 +27,7 @@ help_message = config['HELP_MESSAGE']
 ignored_messages = config['IGNORED_MESSAGES_STARTS_WITH']
 
 logger = None
+output_device_tk=None
 #window = None
 
 class Logger:
@@ -42,7 +43,7 @@ def initialize_logger(log_widget):
     logger = Logger(log_widget)
 
 class Bot(commands.Bot):
-    def __init__(self, loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame):
+    def __init__(self):
         self.loquendo = loquendo
         self.logger = logger
         self.volume_scale = volume_scale
@@ -55,12 +56,11 @@ class Bot(commands.Bot):
         self.no_circle_image = self.load_circle_image("no")
         self.blink_delay = 500  # Retraso en milisegundos para el parpadeo
         self.blink_rows = []
-        super().__init__(token=token, prefix='!', initial_channels=[channel])
         self.voice_mapping = self.load_voice_mapping()
         self.available_voices = ["Carlos", "Jorge", "Diego", "Javier", "Paulina-Ml", "Angelica", "Isabela", "Francisca", "Soledad"]
 
-    def log(self, message):
-        self.logger.log(message)
+ #   def log(self, message):
+ #       self.logger.log(message)
 
 
     def load_voice_mapping(self):
@@ -73,12 +73,6 @@ class Bot(commands.Bot):
     def save_voice_mapping(self):
         with open('voice_mapping.json', 'w') as f:
             json.dump(self.voice_mapping, f, indent=4)
-
-    def on_device_selected(self, device_name):
-        save_selected_device(device_name, self)
-        self.output_device_var.set(device_name)
-        self.log(f"Dispositivo de salida cambiado a {device_name}")
-        print(f"Dispositivo de salida cambiado a {device_name}")
 
     
     def start_circle(self, color, row):
@@ -169,8 +163,11 @@ class Bot(commands.Bot):
         os._exit(1)
 
     async def event_message(self, message):
+
         def clean_message(msg):
+            print(msg)
             cleaned_msg = re.sub(r'\s+', ' ', msg).strip()
+            print(cleaned_msg)
             return cleaned_msg
 
         in_message = clean_message(message.content)
@@ -187,10 +184,6 @@ class Bot(commands.Bot):
     async def process_message(self, message):
 
         texto = f"{message.author.name} dize: {message.content}"
-        self.log(f"-----------------------------")
-        self.log(f"Texto generado: {texto}")
-        print(f"-----------------------------")
-        print(f"Texto generado: {texto}")
 
         if message.author.name in self.voice_mapping:
             voz = self.voice_mapping[message.author.name]
@@ -205,10 +198,10 @@ class Bot(commands.Bot):
         result = self.loquendo.tts(texto, voz, archivo_salida)
 
         if result["res"] == "OK":
-            self.log(f"Mensaje de {message.author.name} sintetizado con éxito.")
-            self.log(f"Voz sintetizada: {voz}")
-            print(f"Mensaje de {message.author.name} sintetizado con éxito.")
-            print(f"Voz sintetizada: {voz}")
+   #         self.log(f"Mensaje de {message.author.name} sintetizado con éxito.")
+   #         self.log(f"Voz sintetizada: {voz}")
+    #        print(f"Mensaje de {message.author.name} sintetizado con éxito.")
+    #        print(f"Voz sintetizada: {voz}")
             audio = AudioSegment.from_wav(archivo_salida)
 
             volumen = self.volume_scale.get()
@@ -239,7 +232,7 @@ class Bot(commands.Bot):
                                 output_device_index=output_device_index)
                 self.log(f"Reproduciendo audio...")
                 print(f"Reproduciendo audio...")           
-
+                
                 stream.write(audio.raw_data)
                 self.log("Audio reproducido.")
                 print("Audio reproducido.")
@@ -291,28 +284,74 @@ class Bot(commands.Bot):
     def is_command_or_link(self, content):
         return content.startswith(('!', *ignored_messages))
 
-def list_mme_audio_devices():
+def get_default_device():
+    default_input, index_def = sd.default.device
+
+    # Obtener los detalles del dispositivo de salida
+    print(index_def)
     devices = sd.query_devices()
-    mme_devices = []
-    for i, device in enumerate(devices):
-        if device['hostapi'] == 0:
-            if device['max_output_channels'] > 0:
-                mme_devices.append((i, device['name']))
-    return mme_devices
+    # Crear listas separadas para dispositivos con 'hostapi': 0 y 'hostapi': 1
+    mme_devices = [(index, dev['name']) for index, dev in enumerate(devices) if dev['hostapi'] == 0]
+    ds_devices = [dev['name'] for dev in devices if dev['hostapi'] == 1]
+    print (mme_devices, "||||||||||", ds_devices)
+    device_list = []
+    for index, mme_device in mme_devices:
+      #  print("a", index)
+        if index is index_def:
+            for ds_device in ds_devices:
+                if mme_device in ds_device:
+                    out_channels = int(devices[index]['max_output_channels'])
+                    if out_channels > 0:
+                        print(f"Default: Dispositivo hostapi 1: {ds_device} - Índice hostapi 0: {index}")
+                        return ds_device, index
+
+
+def set_audio_device(output_device_tk, device_name_index):
+    output_device_tk.set(device_name_index)
+    index = re.search(r'\[(\d+)\]', device_name_index).group(1) if re.search(r'\[(\d+)\]', device_name_index) else None
+    index = int(index)
+    # Remover el índice entre corchetes del nombre del dispositivo
+    device_name = re.sub(r'\s*\[\d+\]', '', device_name_index)
+    
+    save_selected_device(device_name, index)
+    print(f"Dispositivo de salida cambiado a {device_name} con indice {index}")
+
+
+    return device_name, index
+
+#import sounddevice as sd
+def get_audio_device_list():
+    devices = sd.query_devices()
+    mme_devices = [(index, dev['name']) for index, dev in enumerate(devices) if dev['hostapi'] == 0]
+    ds_devices = [dev['name'] for dev in devices if dev['hostapi'] == 1]
+    device_list = []
+
+    for index, mme_device in mme_devices:
+        for ds_device in ds_devices:
+            if mme_device in ds_device:
+
+                out_channels = int(devices[index]['max_output_channels'])
+                print(type(out_channels))
+                if out_channels > 0:
+                    device_list.append(f'{ds_device} [{index}]')  # Agregar nombre del dispositivo hostapi 1
+                    print(f"Dispositivo hostapi 1: {ds_device} - Índice hostapi 0: {index} - Entradas: {devices[index]['max_input_channels']} - Salidas: {devices[index]['max_output_channels']}")
+
+    return device_list
+
 
 def list_audio_output_devices():
     mme_devices = list_mme_audio_devices()
     output_devices = [name for _, name in mme_devices]
     return output_devices
 
-def get_default_output_device():
-    devices = sd.query_devices()
-    for i, device in enumerate(devices):
-        if device['hostapi'] == 0 and device['max_output_channels'] > 0:
-            name = device['name']
-            if name.startswith('<'):
-                return i, name
-    return None, None
+#def get_default_output_device():
+#    devices = sd.query_devices()
+#    for i, device in enumerate(devices):
+#        if device['hostapi'] == 0 and device['max_output_channels'] > 0:
+#            name = device['name']
+#            if name.startswith('<'):
+#                return i, name
+#    return None, None
 
 def get_output_device_index(device_name):
     mme_devices = list_mme_audio_devices()
@@ -322,14 +361,14 @@ def get_output_device_index(device_name):
     return None
 
 
-def save_selected_device(device_name, bot_instance=None):
+def save_selected_device(device_name, index):
     with open('selected_device.json', 'w') as f:
-        json.dump({"selected_device": device_name}, f)
+        json.dump({"selected_device": device_name, "index": index}, f)
 
 
-async def run_bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame):
+async def run_bot(token, channel):
     global bot_instance
-    bot_instance = Bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame)
+    bot_instance = Bot(token=token, prefix='!', initial_channels=channel)
     try:
         await bot_instance.start()
     except errors.AuthenticationError:
@@ -341,25 +380,12 @@ async def run_bot(loquendo, logger, volume_scale, output_device_var, window, cir
         os._exit(1)
 
 
-def load_selected_device(window):
-    # Comprueba que el logger esté inicializado antes de usarlo
-    if logger:
-        logger.log(f"⏳ [0/3] Dispositivo de salida: Cargando...")
-    else:
-        print("Logger no inicializado.")
-
+def load_selected_device():
     if os.path.exists('selected_device.json'):
         with open('selected_device.json', 'r') as f:
             data = json.load(f)
             device_name = data.get("selected_device")
             
-            if logger:
-                logger.log(f"✔ [1/3] Dispositivo de salida: OK -> {device_name}")
-            print(f"Dispositivo de salida cargado: {device_name}")
-
-#                yellow_label.pack(side=tk.LEFT, padx=5)  # Posicionar el círculo a la derecha con un pequeño espacio
-
-
             return device_name
     return None
 
@@ -367,7 +393,7 @@ def load_selected_device(window):
 #    a = tk.PhotoImage(window, file='./assets/yellow_circle.png' )
 #    a.pack()
 
-def start_tkinter_and_bot():
+def start_tkinter():
     global yellow_circle_image0
     global yellow_circle_image1
     global yellow_circle_image2
@@ -375,10 +401,10 @@ def start_tkinter_and_bot():
     width = 0
     height = 0
 
-    def on_closing():
-        if bot_instance:
-            bot_instance.loop.run_until_complete(bot_instance.close())
-        window.destroy()
+#    def on_closing():
+#        if bot_instance:
+#            bot_instance.loop.run_until_complete(bot_instance.close())
+#        window.destroy()
 
     circle_images = {
         "yellow": [None, None, None],
@@ -406,17 +432,24 @@ def start_tkinter_and_bot():
     output_device_label = tk.Label(main_frame, text="Dispositivo de salida:", background="blue")
     output_device_label.place(x=10, y=10)
 
-    output_device_var = tk.StringVar(window)
-    output_devices = list_audio_output_devices()
-    selected_device = load_selected_device(window)
+    default_device = get_default_device()
 
-    if selected_device:
-        output_device_var.set(selected_device)
+    if load_selected_device():
+        print("if")
+        output_device_tk = tk.StringVar(window, default_device)
+    else:
+        print("else")
+        output_device_tk = tk.StringVar(window)
+    device_list = get_audio_device_list()
+    #selected_device = load_selected_device(window)
 
-    output_device_menu = ttk.Combobox(main_frame, textvariable=output_device_var, values=output_devices, background="red")
-    output_device_menu.place(x=150, y=10, width=200)
+    #if selected_device:
+    #    output_device_tk.set(selected_device)
 
-    output_device_menu.bind("<<ComboboxSelected>>", lambda event: bot_instance.on_device_selected(output_device_var.get()))
+    output_device_menu = ttk.Combobox(main_frame, textvariable=output_device_tk, values=device_list, background="red")
+    output_device_menu.place(x=150, y=10, width=400)
+
+    output_device_menu.bind("<<ComboboxSelected>>", lambda event: set_audio_device(output_device_tk, output_device_tk.get()))
 
     log_widget = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, background="green")
     log_widget.place(x=10, y=50, width=480, height=350)
@@ -438,32 +471,49 @@ def start_tkinter_and_bot():
     twitch_channel_label = tk.Label(circle_frame, text="Conexion a Twitch [Canal]")
     twitch_channel_label.grid(row=2, column=1, sticky='w')
 
-    initialize_logger(log_widget)
+#    initialize_logger(log_widget)
 
-    loquendo = Loquendo(log_callback=logger.log)
-    global bot_instance
-    bot_instance = Bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame)
+   
+  #  loquendo.play_file(audio_file_path, volume, output_device_name, )
+  #  delete = loquendo.delete_file(audio_file_path)
+  #  print(audio)
+
+  #  global bot_instance
+   # bot_instance = Bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame)
 
     # Utilizamos grid() en el frame circle_frame para evitar conflictos
-    bot_instance.start_circle("yellow", 0)
-    bot_instance.start_circle("yellow", 1)
-    bot_instance.start_circle("yellow", 2)
-    bot_instance.blink_yellow_circle([0, 1, 2])
+   # bot_instance.start_circle("yellow", 0)
+   # bot_instance.start_circle("yellow", 1)
+   # bot_instance.start_circle("yellow", 2)
+   # bot_instance.blink_yellow_circle([0, 1, 2])
 
     
-    logger.log(f'⏳ [2/3] Canal de Twitch: Conectando...')
+    print(f'⏳ [2/3] Canal de Twitch: Conectando...')
+ #   window.protocol("WM_DELETE_WINDOW", on_closing)
+    window.mainloop()
 
-    try:
-        bot_thread = threading.Thread(target=lambda: asyncio.run(run_bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame)))
-        bot_thread.start()
-
-
-        window.protocol("WM_DELETE_WINDOW", on_closing)
-        window.mainloop()
-
-    except Exception as e:
-        print(e)
+#    try:
+#        bot_thread = threading.Thread(target=lambda: asyncio.run(run_bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame)))
+#        bot_thread.start()
 
 
-if __name__ == "__main__":
-    start_tkinter_and_bot()
+
+start_tkinter()
+#config interfaz
+#voice_mapping (async)
+
+
+#loquendo = Loquendo()
+#token_loquendo = loquendo.get_token()
+#audio_file_path = loquendo.get_audio_file(text, voice, token=token_loquendo, file_output=None)
+#token
+#get audio file
+#play file 
+#delete file
+#connect bot a tw 
+#run_bot(token=token, channel=channel)
+
+
+
+#if __name__ == "__main__":
+#    start_tkinter_and_bot()
