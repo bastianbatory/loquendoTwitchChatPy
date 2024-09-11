@@ -26,4 +26,3 @@ Instrucciones de uso
 - Si cierras el programa y lo vuelves a abrir, todas las configuraciones y opciones se mantienen.
 - La ventana tambien muestra logs en donde se detallan las acciones del programa, y posibles errores.
 - Por seguridad, las configs de token de Twitch estan en el config.yaml para que no se muestre en la ventana, NUNCA MOSTRAR ESTE TOKEN NI COMPARTIRLO.
-- Opcional: Puedes agregar 
