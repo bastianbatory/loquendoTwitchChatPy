@@ -10,7 +10,7 @@ from twitchio import Channel
 from twitchio import errors
 from loquendo import Loquendo
 from pydub import AudioSegment
-import pyaudio
+import sys
 import tkinter as tk
 from tkinter import scrolledtext, ttk
 import asyncio
@@ -21,47 +21,88 @@ with open('config.yaml', 'r') as file:
 
 token = config['TWITCH_OAUTH_TOKEN']
 channel = config['TWITCH_CHANNEL']
-ignored_names = config['IGNORED_USERS']
+ignored_users = config['IGNORED_USERS']
 voice_command = config['COMMAND']
 help_message = config['HELP_MESSAGE']
 ignored_messages = config['IGNORED_MESSAGES_STARTS_WITH']
 
-logger = None
 output_device_tk=None
-#window = None
-
-class Logger:
-    def __init__(self, log_widget):
-        self.log_widget = log_widget
-
-    def log(self, message):
-        self.log_widget.insert(tk.END, message + "\n")
-        self.log_widget.see(tk.END)
-
-def initialize_logger(log_widget):
-    global logger
-    logger = Logger(log_widget)
+token_loquendo = None
 
 class Bot(commands.Bot):
     def __init__(self):
-        self.loquendo = loquendo
-        self.logger = logger
-        self.volume_scale = volume_scale
-        self.output_device_var = output_device_var
+        super().__init__(token=token, prefix='!', initial_channels=[channel])
         self.window = window
-        self.circle_images = circle_images
-        self.circle_labels = circle_labels
-        self.circle_frame = circle_frame
+      #  self.circle_images = circle_images
+    #    self.circle_labels = circle_labels
+     #   self.circle_frame = circle_frame
         self.blinking = False
-        self.no_circle_image = self.load_circle_image("no")
-        self.blink_delay = 500  # Retraso en milisegundos para el parpadeo
-        self.blink_rows = []
+  #      self.no_circle_image = self.load_circle_image("no")
+  #      self.blink_delay = 500  # Retraso en milisegundos para el parpadeo
+  #      self.blink_rows = []
         self.voice_mapping = self.load_voice_mapping()
         self.available_voices = ["Carlos", "Jorge", "Diego", "Javier", "Paulina-Ml", "Angelica", "Isabela", "Francisca", "Soledad"]
 
  #   def log(self, message):
- #       self.logger.log(message)
+ #       #self.logger.log(message)
+    @commands.command()
+    async def voz(self, ctx: commands.Context):
+    # Here we have a command hello, we can invoke our command with our prefix and command name
+    # e.g ?hello
+    # We can also give our commands aliases (different names) to invoke with.
 
+    # Send a hello back!
+    # Sending a reply back to the channel is easy... Below is an example.
+        print("vc", ctx.content)
+        await ctx.send(f'Hello!{ctx.content}')
+
+    async def event_message(self, message):
+
+        if message.author and message.author.name not in ignored_users:
+            print(message.content)
+            if message.content.startswith(voice_command):
+                print("1")
+                message_text = re.sub(r'^!voz\s*', '', message.content)
+                if not message_text:
+                    await message.channel.send(help_message)
+                    print(self.available_voices)
+                    print(message_text)
+                if message_text in self.available_voices:
+                    print("3")
+             #       await self.set_voice(message)
+                    self.voice_mapping[message.author.name] = message_text
+                    print(message_text)
+                    await message.channel.send(f"/me Voz cambiada a {message_text} para {message.author.name}")
+                    self.save_voice_mapping()
+                else:
+                    voices = ', '.join(self.available_voices)
+                    await message.channel.send(f"/me La voz {message_text} no existe, voces disponibles: {voices}")
+
+            if not message.content.startswith("!"):
+                message_text = re.sub(r'^!voz\s*', '', message.content)
+                tts_texto = f"{message.author.name} dize: {message_text}"
+
+                if message.author.name in self.voice_mapping:
+                    voice = self.voice_mapping[message.author.name]
+                else:
+                    voice = random.choice(self.available_voices)
+                    self.voice_mapping[message.author.name] = voice
+                    self.save_voice_mapping()
+            #    #self.log(f"Voz configurada: {voz}")
+                print(f"Voz configurada: {voice}")
+                audio_file_path = None
+                while audio_file_path is None:
+                    audio_file_path = loquendo.get_audio_file(text=tts_texto, voice=voice, token=token_loquendo)
+            # Print the contents of our message to console...
+                volume = volume_scale.get()
+                print(audio_file_path)
+                print(volume)
+                name, index = load_selected_device()
+                print(index)
+                loquendo.play_file(audio_file_path, volume, index)          
+                print("playfile") 
+                loquendo.delete_file(audio_file_path)
+                print("delete") 
 
     def load_voice_mapping(self):
         try:
@@ -128,10 +169,9 @@ class Bot(commands.Bot):
                 label.config(image=self.circle_images["yellow"][row])
 
     async def event_ready(self):
-        #self.log(f'Bot {self.nick} conectado ')
-        bot_instance.start_circle("green", 1)
-        bot_instance.stop_circle("yellow", 1)
-        bot_instance.stop_circle("red", 1)
+  #      bot_instance.start_circle("green", 1)
+  #      bot_instance.stop_circle("yellow", 1)
+  #      bot_instance.stop_circle("red", 1)
         print(f'Login Bot en Twitch | {self.nick}')
         channel_obj = self.get_channel(channel)
         if channel_obj:
@@ -140,169 +180,48 @@ class Bot(commands.Bot):
             print("No se pudo obtener el canal.")
 
     async def event_channel_joined(self, channel: Channel) -> None:
-        bot_instance.start_circle("green", 2)
-        bot_instance.stop_circle("yellow", 2)
-        bot_instance.stop_circle("red", 2)
-        if channel and hasattr(channel, 'name'):
-            self.log(f'✔ [3/3] Conectado al canal de Twitch "{channel.name}" con el bot "{self.nick}"')
+  #      bot_instance.start_circle("green", 2)
+  #      bot_instance.stop_circle("yellow", 2)
+   #     bot_instance.stop_circle("red", 2)
 
-                # Forzar actualización de la ventana para que se muestre la imagen
+        if channel and hasattr(channel, 'name'):
             self.window.update()
-            self.log(f'------------------------------------------------')
-            self.log(f'✔✔✔ Todo listo, escuchando mensajes ✔✔✔')
-            self.log(f'------------------------------------------------')
         else:
-            self.log("❌ Error: El objeto canal no tiene un atributo 'name'")
+            print("❌ Error: El objeto canal no tiene un atributo 'name'")
 
     async def event_channel_join_failure(self, channel):
-        self.stop_circle("green", 2)
-        self.stop_circle("yellow", 2)
-        self.start_circle("red", 2)
-        self.log(f"❌ Error al conectar con el canal {channel}, canal no existe o hubo un error, revisa el archivo config.yaml")
-        await asyncio.sleep(10)
-        os._exit(1)
-
-    async def event_message(self, message):
-
-        def clean_message(msg):
-            print(msg)
-            cleaned_msg = re.sub(r'\s+', ' ', msg).strip()
-            print(cleaned_msg)
-            return cleaned_msg
-
-        in_message = clean_message(message.content)
-
-        if message.author and message.author.name not in ignored_names:
-            if in_message == voice_command:
-                await message.channel.send(help_message)
-            elif in_message.startswith(voice_command + ' '):
-                await self.set_voice(message)
-            else:
-                if not self.is_command_or_link(in_message):
-                    await self.process_message(message)
-
-    async def process_message(self, message):
-
-        texto = f"{message.author.name} dize: {message.content}"
-
-        if message.author.name in self.voice_mapping:
-            voz = self.voice_mapping[message.author.name]
-        else:
-            voz = random.choice(self.available_voices)
-            self.voice_mapping[message.author.name] = voz
-            self.save_voice_mapping()
-        self.log(f"Voz configurada: {voz}")
-        print(f"Voz configurada: {voz}")
-
-        archivo_salida = f"{message.author.name}_{message.id}.wav"
-        result = self.loquendo.tts(texto, voz, archivo_salida)
-
-        if result["res"] == "OK":
-   #         self.log(f"Mensaje de {message.author.name} sintetizado con éxito.")
-   #         self.log(f"Voz sintetizada: {voz}")
-    #        print(f"Mensaje de {message.author.name} sintetizado con éxito.")
-    #        print(f"Voz sintetizada: {voz}")
-            audio = AudioSegment.from_wav(archivo_salida)
-
-            volumen = self.volume_scale.get()
-            self.log(f"Volumen del audio: {volumen}")
-            print(f"Volumen del audio: {volumen}")
-            audio = audio + (volumen - 50)
-
-            audio.export(archivo_salida, format="wav")
-            self.log(f"Archivo de audio generado")
-            print(f"Archivo de audio generado")
-
-            p = pyaudio.PyAudio()
-
-            output_device_name = self.output_device_var.get()
-            self.log(f"Dispositivo de salida configurado: {output_device_name}")
-            print(f"Dispositivo de salida configurado: {output_device_name}")
-
-            output_device_index = get_output_device_index(output_device_name)
-
-            if output_device_index is not None:
-                self.log("Dispositivo de salida encontrado")
-                print("Dispositivo de salida encontrado")
-
-                stream = p.open(format=pyaudio.paInt16,
-                                channels=1,
-                                rate=audio.frame_rate,
-                                output=True,
-                                output_device_index=output_device_index)
-                self.log(f"Reproduciendo audio...")
-                print(f"Reproduciendo audio...")           
-                
-                stream.write(audio.raw_data)
-                self.log("Audio reproducido.")
-                print("Audio reproducido.")
-                
-                stream.stop_stream()
-                stream.close()
-            else:
-                self.log(f"❌ Dispositivo de salida no encontrado: {output_device_name}")
-                print(f"❌ Dispositivo de salida no encontrado: {output_device_name}")
-
-            os.remove(archivo_salida)
-            self.log(f"Archivo de audio eliminado.")
-            self.log(f"-----------------------------")
-            print(f"Archivo de audio eliminado.")
-            print(f"-----------------------------")
-        elif '401' in str(result['res']):
-            print(f"No autenticado con el servidor de voces: {result['res']}")
-        else:
-            self.log(f"❌ Error al sintetizar el mensaje de {message.author.name}: {result['res']}")
-            self.log(f"-----------------------------")
-            print(f"Error al sintetizar el mensaje de {message.author.name}: {result['res']}")
-            print(f"-----------------------------")
-
-    async def set_voice(self, message):
+#        self.stop_circle("green", 2)
+ #       self.stop_circle("yellow", 2)
+  #      self.start_circle("red", 2)
+     #   #self.log(f"❌ Error al conectar con el canal {channel}, canal no existe o hubo un error, revisa el archivo config.yaml")
         try:
-            voz = message.content.split(' ', 1)[1]
-            self.log(f"Cambiando voz para {message.author.name}")
-            print(f"Cambiando voz para {message.author.name}")
+            print("error al conectar al canal")
+            await asyncio.sleep(10)
+            os._exit(1)
+        except Exception as e:
+            print(e)
 
-        except IndexError:
-            await message.channel.send("Por favor, proporciona una voz válida.")
-            self.log(f"Voz inválida")
-            print(f"❌ Voz inválida")
-            return
-        
-        if voz in self.available_voices:
-            self.voice_mapping[message.author.name] = voz
-            self.save_voice_mapping()
-            await message.channel.send(f"Voz cambiada a {voz} para {message.author.name}")
-            self.log(f"Voz cambiada a {voz} para {message.author.name}")
-            self.log(f"-----------------------------")
-            print(f"Voz cambiada a {voz} para {message.author.name}")
-        else:
-            await message.channel.send(f"La voz {voz} no existe o {message.author.name} ya la tiene")
-            self.log(f"❌ La voz {voz} no existe o ya la tiene")
-            self.log(f"-----------------------------")
-            print(f"La voz {voz} no existe o ya la tiene")
 
     def is_command_or_link(self, content):
         return content.startswith(('!', *ignored_messages))
+    
+
 
 def get_default_device():
     default_input, index_def = sd.default.device
-
-    # Obtener los detalles del dispositivo de salida
-    print(index_def)
     devices = sd.query_devices()
-    # Crear listas separadas para dispositivos con 'hostapi': 0 y 'hostapi': 1
+    if not devices:
+       print("no devices")
+       sys.exit() 
     mme_devices = [(index, dev['name']) for index, dev in enumerate(devices) if dev['hostapi'] == 0]
     ds_devices = [dev['name'] for dev in devices if dev['hostapi'] == 1]
-    print (mme_devices, "||||||||||", ds_devices)
-    device_list = []
+
     for index, mme_device in mme_devices:
-      #  print("a", index)
         if index is index_def:
             for ds_device in ds_devices:
                 if mme_device in ds_device:
                     out_channels = int(devices[index]['max_output_channels'])
                     if out_channels > 0:
-                        print(f"Default: Dispositivo hostapi 1: {ds_device} - Índice hostapi 0: {index}")
                         return ds_device, index
 
 
@@ -310,18 +229,18 @@ def set_audio_device(output_device_tk, device_name_index):
     output_device_tk.set(device_name_index)
     index = re.search(r'\[(\d+)\]', device_name_index).group(1) if re.search(r'\[(\d+)\]', device_name_index) else None
     index = int(index)
-    # Remover el índice entre corchetes del nombre del dispositivo
     device_name = re.sub(r'\s*\[\d+\]', '', device_name_index)
     
     save_selected_device(device_name, index)
     print(f"Dispositivo de salida cambiado a {device_name} con indice {index}")
 
-
     return device_name, index
 
-#import sounddevice as sd
 def get_audio_device_list():
     devices = sd.query_devices()
+    if not devices:
+       print("no devices")
+       sys.exit()
     mme_devices = [(index, dev['name']) for index, dev in enumerate(devices) if dev['hostapi'] == 0]
     ds_devices = [dev['name'] for dev in devices if dev['hostapi'] == 1]
     device_list = []
@@ -331,34 +250,10 @@ def get_audio_device_list():
             if mme_device in ds_device:
 
                 out_channels = int(devices[index]['max_output_channels'])
-                print(type(out_channels))
                 if out_channels > 0:
-                    device_list.append(f'{ds_device} [{index}]')  # Agregar nombre del dispositivo hostapi 1
-                    print(f"Dispositivo hostapi 1: {ds_device} - Índice hostapi 0: {index} - Entradas: {devices[index]['max_input_channels']} - Salidas: {devices[index]['max_output_channels']}")
+                    device_list.append(f'{ds_device} [{index}]')  
 
     return device_list
-
-
-def list_audio_output_devices():
-    mme_devices = list_mme_audio_devices()
-    output_devices = [name for _, name in mme_devices]
-    return output_devices
-
-#def get_default_output_device():
-#    devices = sd.query_devices()
-#    for i, device in enumerate(devices):
-#        if device['hostapi'] == 0 and device['max_output_channels'] > 0:
-#            name = device['name']
-#            if name.startswith('<'):
-#                return i, name
-#    return None, None
-
-def get_output_device_index(device_name):
-    mme_devices = list_mme_audio_devices()
-    for index, name in mme_devices:
-        if name == device_name:
-            return index
-    return None
 
 
 def save_selected_device(device_name, index):
@@ -366,16 +261,21 @@ def save_selected_device(device_name, index):
         json.dump({"selected_device": device_name, "index": index}, f)
 
 
-async def run_bot(token, channel):
+async def run_twitch_bot(token, channel):
+    print("metodo ok")
     global bot_instance
-    bot_instance = Bot(token=token, prefix='!', initial_channels=channel)
+    bot_instance = Bot()
+    print(type(channel))
+    print("clase ok")
     try:
         await bot_instance.start()
+        print("instance ok")
     except errors.AuthenticationError:
-        bot_instance.start_circle("red", 1)
-        bot_instance.stop_circle("yellow", 1)
-        bot_instance.stop_circle("green", 1)
-        logger.log(f"❌ Token de Twitch incorrecto")
+ #       bot_instance.start_circle("red", 1)
+ #       bot_instance.stop_circle("yellow", 1)
+ #       bot_instance.stop_circle("green", 1)
+ #       logger.log(f"❌ Token de Twitch incorrecto")
+        print("instance no")
         await asyncio.sleep(10)
         os._exit(1)
 
@@ -385,8 +285,8 @@ def load_selected_device():
         with open('selected_device.json', 'r') as f:
             data = json.load(f)
             device_name = data.get("selected_device")
-            
-            return device_name
+            device_index = data.get("index")
+            return device_name, device_index
     return None
 
 #def img():
@@ -400,11 +300,6 @@ def start_tkinter():
     state = "OFF"
     width = 0
     height = 0
-
-#    def on_closing():
-#        if bot_instance:
-#            bot_instance.loop.run_until_complete(bot_instance.close())
-#        window.destroy()
 
     circle_images = {
         "yellow": [None, None, None],
@@ -420,100 +315,104 @@ def start_tkinter():
 
     window = tk.Tk()
     window.title("Bot de Twitch")
-    window.geometry("700x500")
+    window.geometry("200x580")
 
-    main_frame = tk.Frame(window, background="cyan")
+    main_frame = tk.Frame(window)
     main_frame.pack(fill='both', expand=True)
 
     # Crear un nuevo Frame para manejar los círculos con grid()
     circle_frame = tk.Frame(main_frame)
-    circle_frame.pack(side='bottom', pady=10)  # Usamos pack para el frame completo
+    circle_frame.pack(side='top', pady=10)  # Frame de círculos en la parte superior
 
-    output_device_label = tk.Label(main_frame, text="Dispositivo de salida:", background="blue")
-    output_device_label.place(x=10, y=10)
+    # Etiquetas de conexión en el frame circle_frame
+    twitch_bot_label = tk.Label(circle_frame, text="Conexion a servidor de voces")
+    twitch_bot_label.grid(row=0, column=0, pady=5, sticky='w')
 
-    default_device = get_default_device()
+    twitch_bot_label = tk.Label(circle_frame, text="Conexion a Twitch [Bot]")
+    twitch_bot_label.grid(row=1, column=0, pady=5, sticky='w')
 
-    if load_selected_device():
-        print("if")
-        output_device_tk = tk.StringVar(window, default_device)
-    else:
-        print("else")
-        output_device_tk = tk.StringVar(window)
+    twitch_channel_label = tk.Label(circle_frame, text="Conexion a Twitch [Canal]")
+    twitch_channel_label.grid(row=2, column=0, pady=5, sticky='w')
+
+    # Frame para Volumen y Fader
+    volume_frame = tk.Frame(main_frame)
+    volume_frame.pack(side='top', pady=(10, 0), fill='x', padx=10)
+
+    # Etiqueta de volumen
+    volume_label = tk.Label(volume_frame, text="Volumen:")
+    volume_label.pack(side='top', pady=(0, 5))
+
+    # Escala de volumen
+    global volume_scale
+    volume_scale = tk.Scale(volume_frame, from_=100, to=0, orient=tk.VERTICAL, length=320)
+    volume_scale.set(75)
+    volume_scale.pack(side='top', fill='y', expand=True)
+
+    # Frame para Dispositivo de salida y ComboBox
+    device_frame = tk.Frame(main_frame)
+    device_frame.pack(side='bottom', pady=10, fill='x', padx=10)
+
+    # Etiqueta de dispositivo de salida
+    output_device_label = tk.Label(device_frame, text="Dispositivo de salida:")
+    output_device_label.pack(side='top', pady=(0, 5))
+
+    # ComboBox de dispositivos de salida
+    default_device, ind = get_default_device()
+    selected_device, a = load_selected_device()
+    if selected_device:
+        device = selected_device
+        output_device_tk = tk.StringVar(window, device)
+        output_device_tk.set(device)
+    elif default_device:
+        device = f'{default_device} [{ind}]'
+        output_device_tk = tk.StringVar(window, device)
+        output_device_tk.set(device)
+        save_selected_device(default_device, ind)
+
     device_list = get_audio_device_list()
-    #selected_device = load_selected_device(window)
-
-    #if selected_device:
-    #    output_device_tk.set(selected_device)
-
-    output_device_menu = ttk.Combobox(main_frame, textvariable=output_device_tk, values=device_list, background="red")
-    output_device_menu.place(x=150, y=10, width=400)
+    output_device_menu = ttk.Combobox(device_frame, textvariable=output_device_tk, values=device_list)
+    output_device_menu.pack(side='top', pady=(0, 20), fill='x')  # Llenar horizontalmente y un poco de padding abajo
 
     output_device_menu.bind("<<ComboboxSelected>>", lambda event: set_audio_device(output_device_tk, output_device_tk.get()))
 
-    log_widget = scrolledtext.ScrolledText(main_frame, wrap=tk.WORD, background="green")
-    log_widget.place(x=10, y=50, width=480, height=350)
+    return window
 
-    volume_label = tk.Label(main_frame, text="Volumen:", background="yellow")
-    volume_label.place(x=520, y=50)
+def run_bot_in_thread():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(run_twitch_bot(token, channel))
 
-    volume_scale = tk.Scale(main_frame, from_=0, to=100, orient=tk.VERTICAL, background="yellow")
-    volume_scale.set(50)
-    volume_scale.place(x=520, y=80, height=320)
+def on_closing():
+    stop_event.set()  # Señaliza el evento de parada
+    window.destroy()  # Cierra la ventana
+    sys.exit()
+def token_loquendo():
+    global token_loquendo
+    while not stop_event.is_set():
+        token_loquendo = loquendo.get_token()  
+        print(token_loquendo)
+  #      status = loquendo.test_token(token_loquendo)
+  #      print(status)
+        if token_loquendo:
+            time.sleep(10)
+        else:
+            time.sleep(1)
 
-    # Usa el frame circle_frame para los círculos con grid()
-    twitch_bot_label = tk.Label(circle_frame, text="Conexion a servidor de voces")
-    twitch_bot_label.grid(row=0, column=1, sticky='w')
+#start_tkinter()
+loquendo = Loquendo()
+window = start_tkinter()
+stop_event = threading.Event()
 
-    twitch_bot_label = tk.Label(circle_frame, text="Conexion a Twitch [Bot]")
-    twitch_bot_label.grid(row=1, column=1, sticky='w')
+loquendo_thread = threading.Thread(target=token_loquendo, daemon=True)
+loquendo_thread.start()
 
-    twitch_channel_label = tk.Label(circle_frame, text="Conexion a Twitch [Canal]")
-    twitch_channel_label.grid(row=2, column=1, sticky='w')
+twitch_bot_thread = threading.Thread(target=run_bot_in_thread, daemon=True)
+twitch_bot_thread.start()
 
-#    initialize_logger(log_widget)
-
-   
-  #  loquendo.play_file(audio_file_path, volume, output_device_name, )
-  #  delete = loquendo.delete_file(audio_file_path)
-  #  print(audio)
-
-  #  global bot_instance
-   # bot_instance = Bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame)
-
-    # Utilizamos grid() en el frame circle_frame para evitar conflictos
-   # bot_instance.start_circle("yellow", 0)
-   # bot_instance.start_circle("yellow", 1)
-   # bot_instance.start_circle("yellow", 2)
-   # bot_instance.blink_yellow_circle([0, 1, 2])
-
-    
-    print(f'⏳ [2/3] Canal de Twitch: Conectando...')
- #   window.protocol("WM_DELETE_WINDOW", on_closing)
-    window.mainloop()
-
-#    try:
-#        bot_thread = threading.Thread(target=lambda: asyncio.run(run_bot(loquendo, logger, volume_scale, output_device_var, window, circle_images, circle_labels, circle_frame)))
-#        bot_thread.start()
-
-
-
-start_tkinter()
-#config interfaz
-#voice_mapping (async)
-
-
-#loquendo = Loquendo()
-#token_loquendo = loquendo.get_token()
-#audio_file_path = loquendo.get_audio_file(text, voice, token=token_loquendo, file_output=None)
-#token
-#get audio file
-#play file 
-#delete file
-#connect bot a tw 
 #run_bot(token=token, channel=channel)
+#loquendo.get_audio_file(text, voice, token)
 
-
-
-#if __name__ == "__main__":
-#    start_tkinter_and_bot()
+window.protocol("WM_DELETE_WINDOW", on_closing)
+window.mainloop()
+loquendo_thread.join()
+twitch_bot_thread.join()
