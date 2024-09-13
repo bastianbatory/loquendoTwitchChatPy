@@ -1,8 +1,7 @@
 # config.yaml
-TWITCH_OAUTH_TOKEN: rgl1ncmyll1u4hdvkv3or6owaoy901
-TWITCH_CHANNEL: profesorcerebron
+TWITCH_OAUTH_TOKEN: TWITCH_OAUTH_TOKEN
+TWITCH_CHANNEL: TWITCH_CHANNEL
 IGNORED_USERS:
-  - profesorcerebron
   - streamelements
   - wizebot
   - serybot
