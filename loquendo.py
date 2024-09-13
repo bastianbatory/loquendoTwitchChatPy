@@ -7,6 +7,7 @@ from pydub import AudioSegment
 from datetime import datetime
 import pyaudio
 import os
+import aiohttp
 
 class Loquendo:
     def __init__(self):
@@ -23,45 +24,21 @@ class Loquendo:
         self.session.headers.update(self.headers)
         self.token = None
 
-    def get_token(self):
+    async def get_token(self):
         token_url = 'https://www.nuance.com/bin/nuance/ttstoken.json'
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(token_url, headers=self.headers) as response:
+                    response.raise_for_status()  # Check for HTTP errors
+                    json_response = await response.json()
+                    self.token = json_response.get("token")
+                    print(f"Token obtenido")
+                    return self.token
+            except aiohttp.ClientError as e:
+                print(f"Error al obtener el token: {e}")
+            except ValueError as e:
+                print(f"Error al procesar la respuesta JSON: {e}")
 
-        try:
-            response = self.session.post(token_url)
-            response.raise_for_status()  # Check for HTTP errors
-            json_response = response.json()
-            self.token = json_response.get("token")
-            print(f"Token obtenido: {self.token}")
-            return self.token
-        except requests.exceptions.RequestException as e:
-            print(f"Error al obtener el token: {e}")
-        except ValueError as e:
-            print(f"Error al procesar la respuesta JSON: {e}")
-
-    def test_token(self, token):
-        url = 'https://tts.api.nuance.com/api/v1/synthesize'
-        data = {
-            "voice": {
-                "name": "Francisca",
-                "model": "standard"
-            },
-            "input": {
-                "text": {
-                    "text": "text"
-                }
-            }
-        }
-
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json"
-        }
-        response2 = self.session.post(url, json=data, headers=headers)
-        response2.raise_for_status()  # Check for HTTP errors
-        json_response = response2.json()
-        status = json_response.get("status", {}).get("code")
-        if status == 200:
-            return "ok"
 
 
     def get_audio_file(self, text, voice, token):
@@ -127,6 +104,7 @@ class Loquendo:
             stream.write(audio.raw_data)
             stream.stop_stream()
             stream.close()
+            return True
 
     def delete_file(self, path):
         os.remove(path)
